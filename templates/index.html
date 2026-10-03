@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>OrderBridge DN2</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=0.26.0">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="OrderBridge DN2">
+      <span class="brand-mark"><span></span><span></span></span>
+      <span><strong>OrderBridge</strong><small>Sopoka → KiotViet</small></span>
+    </a>
+    <div class="top-actions">
+      <div id="extensionStatus" class="status-pill status-offline"><i></i><span>Đang kiểm tra Edge WebDriver</span></div>
+      <div id="automationModeBadge" class="mode-badge mode-review" title="Chế độ chạy được hiển thị theo workflow hiện tại">
+        <span class="mode-dot"></span><span>Đang xác minh chế độ chạy</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <nav class="view-tabs reveal" role="tablist" aria-label="Các màn hình OrderBridge">
+      <button id="workflowTabButton" class="view-tab active" type="button" role="tab" aria-selected="true" aria-controls="workflowView">Workflow</button>
+      <button id="ledgerTabButton" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="ledgerView">Đơn đã lưu SQLite</button>
+    </nav>
+    <div id="workflowView" data-view-panel>
+    <section class="hero reveal">
+      <div>
+        <p class="eyebrow">Trung tâm điều phối đơn hàng</p>
+        <h1>Vận hành đơn hàng rõ ràng.<br><span>Theo dõi từng file, lô và mã đơn theo thời gian thực.</span></h1>
+        <p class="hero-copy">Tải báo cáo hôm nay, đối chiếu SQLite, chia tối đa 19 đơn mỗi lô và điều khiển KiotViet. Mọi bước đều có trạng thái, nhật ký và kết quả đối soát ngay trên một màn hình.</p>
+      </div>
+      <div class="hero-side">
+        <div class="date-chip" title="Ngày nghiệp vụ luôn theo múi giờ Asia/Bangkok (GMT+7).">
+          <div><span>Ngày nghiệp vụ</span><small id="businessDateHint">Asia/Bangkok · tự đổi lúc 00:00</small></div>
+          <strong id="businessDate">--/--/----</strong>
+        </div>
+        <label class="workflow-date-picker" for="workflowDate">Ngày report cần xử lý</label>
+        <input id="workflowDate" class="workflow-date-input" type="date" aria-describedby="workflowDateHelp">
+        <small id="workflowDateHelp" class="workflow-date-help">Chọn ngày cũ để tải lại report hoặc xử lý file đã tải. Workflow sẽ giữ đúng ngày đã chọn qua 00:00 và SQLite vẫn đối chiếu theo ngày đó.</small>
+        <button id="primaryRunButton" class="button button-primary button-large">
+          <span class="button-icon">↻</span>
+          <span><small>Sopoka → KiotViet</small>Tải report &amp; chạy tự động</span>
+        </button>
+        <button id="stopRunButton" class="button button-ghost button-stop" type="button" hidden disabled>
+          Dừng tác vụ đang chạy
+        </button>
+        <p id="runStatus" class="run-status" role="status" aria-live="polite">Bấm để tải báo cáo ngày đã chọn; tool sẽ xử lý tuần tự và tự hoàn tất các lô hợp lệ.</p>
+      </div>
+    </section>
+
+    <section class="workflow-card reveal delay-1" aria-label="Tiến trình workflow">
+      <div class="workflow-line"><div id="workflowProgress"></div></div>
+      <ol id="workflowSteps" class="workflow-steps">
+        <li class="active" data-step="source"><span>1</span><div><b>Tải báo cáo</b><small>Sopoka · ngày đã chọn</small></div></li>
+        <li data-step="review"><span>2</span><div><b>Kiểm tra</b><small>Trùng & dữ liệu</small></div></li>
+        <li data-step="generate"><span>3</span><div><b>Tạo file</b><small>Tối đa 19 sheet</small></div></li>
+        <li data-step="import"><span>4</span><div><b>Import</b><small>Đồng Nai 2 - ĐN2</small></div></li>
+        <li data-step="confirm"><span>5</span><div><b>Hoàn tất</b><small>Đối soát & ghi sổ</small></div></li>
+      </ol>
+      <div class="run-monitor" aria-live="polite">
+        <div class="run-monitor__headline">
+          <div>
+            <span class="micro-label">Tiến độ workflow hiện tại</span>
+            <strong id="runProgressLabel">Chờ bắt đầu lượt xử lý mới</strong>
+          </div>
+          <strong id="runProgressPercent" class="run-monitor__percent">0%</strong>
+        </div>
+        <p id="runProgressDetail" class="run-monitor__detail">Kết quả sẽ được cập nhật theo từng file báo cáo và từng lô import.</p>
+        <div class="progress-track progress-track--large" aria-label="Tiến độ workflow"><i id="runProgressBar" style="width: 0%"></i></div>
+        <div id="runBatchProgress" class="run-batch-progress hidden" aria-live="polite">
+          <div class="run-batch-progress__head">
+            <span id="runBatchProgressLabel">Tiến độ theo lô</span>
+            <strong id="runBatchProgressCounter">0/0 lô</strong>
+          </div>
+          <div id="runBatchSegments" class="run-batch-segments" aria-label="Tiến độ từng file import"></div>
+          <p id="runBatchProgressDetail">Thanh tổng không reset khi tool chuyển sang file import tiếp theo.</p>
+        </div>
+        <div id="liveAutomationProgress" class="live-automation hidden" data-phase="idle">
+          <span class="live-automation__pulse"></span>
+          <div><b id="liveProgressPhase">Edge đang chờ tác vụ</b><small id="liveProgressDetail">Chưa có thao tác trình duyệt đang chạy.</small></div>
+          <strong id="liveProgressCounter">—</strong>
+          <div class="progress-track"><i id="liveProgressBar" style="width: 0%"></i></div>
+        </div>
+        <div id="runResultSummary" class="run-result-summary"><span class="result-dot neutral"></span><span>Chưa có kết quả workflow để tổng hợp.</span></div>
+      </div>
+    </section>
+
+    <section class="metrics reveal delay-2">
+      <article class="metric">
+        <div class="metric-icon blue">⇩</div>
+        <div><small>File nguồn</small><strong id="metricSource">Chưa có</strong><span id="metricSourceHint">Chờ tải report Sopoka</span></div>
+      </article>
+      <article class="metric">
+        <div class="metric-icon violet">▦</div>
+        <div><small>Đơn hôm nay</small><strong id="metricOrders">0</strong><span id="metricLines">0 dòng sản phẩm</span></div>
+      </article>
+      <article class="metric">
+        <div class="metric-icon mint">◫</div>
+        <div><small>Lô import</small><strong id="metricBatches">0</strong><span>Tối đa 19 đơn / lô</span></div>
+      </article>
+      <article class="metric">
+        <div class="metric-icon amber">!</div>
+        <div><small>Trùng trong ngày</small><strong id="metricDuplicates">0</strong><span id="metricDuplicateHint">Chưa phát hiện</span></div>
+      </article>
+      <article class="metric metric-complete">
+        <div class="metric-icon navy">✓</div>
+        <div><small>Đã hoàn tất</small><strong id="metricCompletedOrders">0</strong><span id="metricCompletedHint">0/0 đơn đã đối soát</span></div>
+      </article>
+    </section>
+
+    <section class="workspace-grid">
+      <div class="stack">
+        <article class="panel reveal delay-2">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">01 · Nguồn dữ liệu</p><h2>Báo cáo Sopoka</h2></div>
+            <span id="sourceBadge" class="tag neutral">Chưa xử lý</span>
+          </div>
+          <form id="sourceForm" class="path-form">
+            <label for="sourcePath">Phương án dự phòng: dán đường dẫn file report Excel đã tải (.xls, .xlsx, .xlsm, .xltx, .xltm)</label>
+            <div><input id="sourcePath" name="source_path" autocomplete="off" placeholder="C:\Users\...\Downloads\ReportOrderSaleSummary_....xlsx"><button class="button button-dark" type="submit">Kiểm tra &amp; chạy tự động</button></div>
+            <p class="file-help">File gốc chỉ được đọc. Nhận .xls/.xlsx/.xlsm/.xltx/.xltm (chưa nhận .xlsb). Mã đã xác nhận trong SQLite sẽ tự bỏ qua; trạng thái từng file, lô và mã đơn luôn được lưu để có thể đối soát lại.</p>
+          </form>
+          <details class="optional-download">
+            <summary>Hoặc: chạy lại riêng bước tải báo cáo bằng Edge</summary>
+            <div class="action-block">
+              <div class="action-copy">
+                <div class="round-icon">S</div>
+                <div><b>Tải báo cáo ngày hôm nay</b><p>Có thể cần tự bấm <b>Giữ lại</b> trong Edge nếu file bị chặn.</p></div>
+              </div>
+              <button id="downloadButton" class="button button-secondary" type="button">Tải tự động bằng Edge</button>
+            </div>
+          </details>
+          <div id="sourceSummary" class="compact-summary hidden"></div>
+          <div id="scanSummary" class="scan-summary hidden"></div>
+        </article>
+
+        <article class="panel reveal delay-3 purchase-panel">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">KiotViet · Nhập hàng</p><h2>Nhập hàng từ file Đồng Nai 1</h2></div>
+            <span class="tag info">VAT 8%</span>
+          </div>
+          <p class="file-help">Tool chỉ lấy dòng có <b>Số lượng giao hàng</b> lớn hơn 0, bỏ qua ô trống/dấu "-", chia đơn giá cho 1,08, bật VAT và chọn nhà cung cấp OMEGA. Ngày phiếu được đặt rõ ràng trên KiotViet trước khi hoàn thành. KiotViet phải đang ở chi nhánh <b>Đồng Nai 2 - ĐN2</b>.</p>
+          <form id="purchaseForm" class="path-form">
+            <label for="purchaseSourcePath">File nguồn Đồng Nai 1 (.xls, .xlsx, .xlsm, .xltx hoặc .xltm)</label>
+            <div><input id="purchaseSourcePath" autocomplete="off" value="C:\Users\binni\Downloads\&#272;&#7891;ng Nai 1 - 11.08 ST CH&#7888;T.xlsx"><button id="purchaseImportButton" class="button button-dark" type="submit">Tạo file &amp; nhập hàng</button></div>
+            <label for="purchaseBaselinePath">File đối chiếu trước đó (tùy chọn, chỉ nhập phần tăng thêm)</label>
+            <input id="purchaseBaselinePath" autocomplete="off" placeholder="C:\Users\...\Đồng Nai 1 - 11.09 ST.xlsx">
+            <label for="purchaseDate">Ngày phiếu nhập trên KiotViet</label>
+            <input id="purchaseDate" type="date" value="{{ default_purchase_date }}" required>
+            <label class="purchase-recovery-toggle" for="autoCreateMissingProducts">
+              <input id="autoCreateMissingProducts" type="checkbox">
+              <span><b>Tự tạo mã hàng thiếu rồi nhập lại một lần</b><small>Chỉ dùng khi KiotViet báo rõ “Mã hàng không có/ngừng kinh doanh”. Tool tạo theo form đã chốt: TBĐ · SPK · giá vốn 0 · VAT 8%.</small></span>
+            </label>
+          </form>
+          <div id="purchaseSummary" class="compact-summary hidden" role="status" aria-live="polite"></div>
+        </article>
+
+        <article class="panel reveal delay-3">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">02 · Lô làm việc</p><h2>Tiến độ file import</h2></div>
+            <span class="tag info"><span id="batchCount">0</span> lô</span>
+          </div>
+          <div id="batchProgressSummary" class="batch-progress-summary hidden" aria-live="polite"></div>
+          <div id="batchList" class="batch-list empty-state">
+            <div class="empty-illustration"><span></span><span></span><span></span></div>
+            <b>Chưa có lô import</b>
+            <p>Hãy tải hoặc phân tích báo cáo để bắt đầu.</p>
+          </div>
+        </article>
+      </div>
+
+      <aside class="stack">
+        <article class="panel reveal delay-2">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">KiotViet · Điều kiện bắt buộc</p><h2>Kiểm tra trước import</h2></div>
+            <button id="inspectKiotButton" class="icon-button" title="Kiểm tra lại">↻</button>
+          </div>
+          <div class="check-list">
+            <div id="checkExtension" class="check-row pending"><span class="check-dot"></span><div><b>Edge WebDriver</b><small>Đang kiểm tra driver</small></div></div>
+            <div id="checkBranch" class="check-row pending"><span class="check-dot"></span><div><b>Đồng Nai 2 - ĐN2</b><small>Chưa kiểm tra chi nhánh</small></div></div>
+            <div id="checkMode" class="check-row pending"><span class="check-dot"></span><div><b>Tab Đặt hàng</b><small>Không chấp nhận Hóa đơn</small></div></div>
+            <div id="checkAutomation" class="check-row pending"><span class="check-dot"></span><div><b>Chế độ hoàn tất đơn</b><small>Đang đọc cấu hình workflow</small></div></div>
+          </div>
+          <button id="prepareKiotButton" class="button button-outline full">Chọn đúng chi nhánh & mở Đặt hàng</button>
+          <button id="cleanTabsButton" class="button button-ghost full">Dọn tab đặt hàng cũ</button>
+        </article>
+
+        <article class="panel reveal delay-3">
+          <div class="panel-heading"><div><p class="panel-kicker">Quy tắc vận hành</p><h2>Chế độ tự động</h2></div><span class="lock">⌁</span></div>
+          <dl class="settings-list">
+            <div><dt>Tự bấm ĐẶT HÀNG</dt><dd><label><input id="autoSubmitToggle" type="checkbox" disabled> <span id="autoSubmitLabel">Đang đọc cấu hình</span></label></dd></div>
+            <div><dt>Chi nhánh đích</dt><dd>Đồng Nai 2 - ĐN2</dd></div>
+            <div><dt>Hậu tố mã khách</dt><dd>DN1 <span class="help" title="DN1 là quy tắc mã khách, khác với chi nhánh DN2">?</span></dd></div>
+            <div><dt>Giới hạn mỗi file</dt><dd>19 đơn / 250 dòng mỗi sheet</dd></div>
+            <div><dt>Nguồn report</dt><dd id="sourceMode">Tự động · Edge / Sopoka hôm nay</dd></div>
+            <div><dt>Trạng thái workflow</dt><dd id="automationMode">Chờ workflow</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel log-panel reveal delay-3">
+          <div class="panel-heading"><div><p class="panel-kicker">Nhật ký thời gian thực</p><h2>Hoạt động</h2></div><button id="clearLogButton" class="text-button">Ẩn cũ</button></div>
+          <div id="eventLog" class="event-log"><div class="log-empty">Các bước chạy sẽ xuất hiện tại đây.</div></div>
+        </article>
+      </aside>
+    </section>
+    </div>
+
+    <section id="ledgerView" class="ledger-view hidden" data-view-panel role="tabpanel" aria-labelledby="ledgerTabButton">
+      <article class="panel ledger-panel reveal">
+        <div class="panel-heading">
+          <div><p class="panel-kicker">SQLite · Sổ theo dõi</p><h2>Đơn đã chạy</h2></div>
+          <div class="ledger-heading-actions">
+            <label class="ledger-date-label" for="ledgerDate">Ngày</label>
+            <input id="ledgerDate" class="ledger-date" type="date">
+            <button id="refreshLedgerButton" class="button button-outline" type="button">Làm mới</button>
+          </div>
+        </div>
+        <div class="ledger-toolbar">
+          <label><input id="ledgerSelectAll" type="checkbox"> Chọn tất cả mã đang hiển thị</label>
+          <span id="ledgerCountLabel">0 mã đã lưu</span>
+          <button id="deleteLedgerButton" class="button button-danger" type="button" disabled>Xóa mã đã chọn</button>
+        </div>
+        <p class="ledger-warning">Xóa ở đây chỉ xóa dữ liệu SQLite và không hoàn tác đơn đã đặt trên KiotViet. Chỉ chọn khi bạn thực sự muốn chạy lại mã đó.</p>
+        <div id="ledgerStatus" class="ledger-status" role="status" aria-live="polite">Đang tải sổ SQLite…</div>
+        <div id="ledgerTable" class="ledger-table-wrap"></div>
+      </article>
+    </section>
+  </main>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <div id="duplicateModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle">
+    <div class="modal">
+      <div class="modal-icon warning">!</div>
+      <p class="panel-kicker">Cần quyết định của bạn</p>
+      <h2 id="duplicateTitle">Phát hiện đơn đã xử lý trong ngày</h2>
+      <p>Tool sẽ dừng mặc định. Chỉ tiếp tục nếu bạn đã kiểm tra danh sách trùng bên dưới.</p>
+      <div id="duplicateList" class="duplicate-list"></div>
+      <div class="modal-actions"><button id="stopDuplicateButton" class="button button-ghost">Dừng workflow</button><button id="continueDuplicateButton" class="button button-danger">Tôi hiểu, vẫn tiếp tục</button></div>
+    </div>
+  </div>
+
+  <div id="cleanupModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="cleanupTitle">
+    <div class="modal">
+      <div class="modal-icon warning">×</div>
+      <p class="panel-kicker">Xác nhận thao tác xóa</p>
+      <h2 id="cleanupTitle">Đóng các tab đặt hàng cũ?</h2>
+      <p>Tab chưa lưu có thể chứa dữ liệu. Tool sẽ giữ lại một tab trắng làm tab nền cho lần import tiếp theo.</p>
+      <div class="modal-actions"><button id="cancelCleanupButton" class="button button-ghost">Không xóa</button><button id="confirmCleanupButton" class="button button-danger">Đóng các tab cũ</button></div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}?v=0.26.0" defer></script>
+</body>
+</html>

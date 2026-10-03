@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Sopoka → KiotViet Automation",
+  "version": "0.10.2",
+  "description": "Kết nối web app cục bộ với các tab Sopoka và KiotViet đang đăng nhập.",
+  "permissions": ["tabs", "scripting", "downloads", "debugger", "storage"],
+  "host_permissions": [
+    "http://dms.sopoka.com.vn/*",
+    "https://nongsanlamhong.kiotviet.vn/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Sopoka → KiotViet Automation"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],
+      "js": ["dashboard-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://dms.sopoka.com.vn/*"],
+      "js": ["sopoka-content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
